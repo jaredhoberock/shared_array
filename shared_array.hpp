@@ -49,7 +49,7 @@ template<size_t N>
     __device__
     const int &operator[](int i) const
     {
-      assert_clean(i, threadIdx.x);
+      assert_ownership_or_no_owner(i, threadIdx.x);
 
       return m_array[i];
     }
@@ -155,7 +155,7 @@ template<size_t N>
     }
 
     __device__
-    void assert_clean(int i, int thread_idx) const
+    void assert_ownership_or_no_owner(int i, int thread_idx) const
     {
       if(m_tags[i] != (blockDim.x + 1) && m_tags[i] != thread_idx)
       {
