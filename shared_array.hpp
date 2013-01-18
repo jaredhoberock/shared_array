@@ -1,11 +1,5 @@
-struct uninitialized_t {};
-
-struct thread_t {};
-
-struct block_t {};
-
-extern single_thread_t single_thread;
-extern thread_block_t  thread_block;
+#include <cassert>
+#include <cstdio>
 
 template<size_t N>
   class shared_array
@@ -14,29 +8,35 @@ template<size_t N>
     /*! \pre This thread block shall be converged.
      */
     __device__
-    shared_array(thread_block_t)
+    shared_array()
     {
-      __shared__ int last_touched[N];
+      initialize_tags();
+
       __shared__ int array[N];
 
-      __syncthreads();
+      barrier();
       if(threadIdx.x == 0)
       {
-        m_last_touched = last_touched;
-        m_array        = impl;
+        m_array = array;
       }
-      __syncthreads();
+      barrier();
 
-      construct(block);
+      construct_elements();
+    }
+
+    /*! \pre This thread block shall be converged.
+     */
+    __device__
+    ~shared_array()
+    {
+      destroy_elements();
     }
 
     __device__
     int &operator[](int i)
     {
-      assert_clean(i, threadIdx.x);
-
-      // dirty location i
-      m_last_touched[i] = threadIdx.x;
+      // gain exclusive access to tag i
+      assert_atomically_obtain_tag(i, threadIdx.x);
 
       return m_array[i];
     }
@@ -52,40 +52,92 @@ template<size_t N>
     /*! \pre This thread block shall be converged.
      */
     __device__
-    void barrier(thread_block_t)
+    void barrier()
     {
-      clear_last_touched(thread_block_t);
+      clear_tags();
       __syncthreads();
+    }
+
+    __device__
+    size_t size() const
+    {
+      return N;
     }
 
   private:
     __device__
-    void construct(thread_block_t)
+    void initialize_tags()
+    {
+      __shared__ int tags[N];
+
+      __syncthreads();
+      if(threadIdx.x == 0)
+      {
+        m_tags = tags;
+      }
+      __syncthreads();
+
+      clear_tags();
+    }
+
+    __device__
+    void construct_elements()
     {
     }
 
     __device__
-    void clear_last_touched(thread_block_t)
+    void destroy_elements()
     {
+    }
+
+    __device__
+    void clear_tags()
+    {
+      const int tag_is_clear = blockDim.x + 1;
+
       if(threadIdx.x == 0)
       {
         for(int i = 0; i < size(); ++i)
         {
-          m_last_touched[i] = blockDim.x + 1;
+          m_tags[i] = tag_is_clear;
         }
+      }
+    }
+
+    __device__
+    bool atomically_obtain_tag(int i, int thread_idx)
+    {
+      const int tag_is_clear = blockDim.x + 1;
+
+      // only grab the tag if it has no other owner
+      int old_tag = atomicCAS(m_tags + i, tag_is_clear, thread_idx);
+
+      // we own the tag if we were able to obtain it or it we already owned it
+      return (old_tag == tag_is_clear) || (old_tag == thread_idx);
+    }
+
+    __device__
+    void assert_atomically_obtain_tag(int i, int thread_idx)
+    {
+      if(!atomically_obtain_tag(i, threadIdx.x))
+      {
+        // multiple writers
+        printf("Write after write hazard detected in thread %d of block %d\n", threadIdx.x, blockIdx.x);
+        assert(false);
       }
     }
 
     __device__
     void assert_clean(int i, int thread_idx) const
     {
-      if(m_last_touched[i] != (blockDim.x + 1) && m_last_touched[i] != thread_idx)
+      if(m_tags[i] != (blockDim.x + 1) && m_tags[i] != thread_idx)
       {
-        assert();
+        printf("Read after write hazard detected in thread %d of block %d\n", threadIdx.x, blockIdx.x);
+        assert(false);
       }
     }
 
     int *m_array;
-    int *m_last_touched;
+    int *m_tags;
 };
 
