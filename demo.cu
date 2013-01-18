@@ -9,6 +9,8 @@ __global__ void single_reader_hazard(thrust::device_ptr<int> result)
 
   smem[threadIdx.x] = 1;
 
+  // XXX missing barrier here
+
   if(threadIdx.x == 0)
   {
     // read after write
@@ -22,6 +24,7 @@ __global__ void multiple_writers_hazard(thrust::device_ptr<int> result)
 {
   shared_array<128> smem;
 
+  // XXX all threads write to the same location
   smem[0] = threadIdx.x;
 
   smem.barrier();
@@ -32,7 +35,7 @@ __global__ void multiple_writers_hazard(thrust::device_ptr<int> result)
   }
 }
 
-__global__ void foo(thrust::device_ptr<int> result)
+__global__ void race_free_reduction(thrust::device_ptr<int> result)
 {
   shared_array<128> smem;
 
@@ -65,9 +68,9 @@ int main()
 {
   thrust::device_vector<int> vec(1);
 
-  foo<<<1,128>>>(vec.data());
+  race_free_reduction<<<1,128>>>(vec.data());
 
-  std::cout << "foo result is " << vec[0] << std::endl;
+  std::cout << "race_free_reduction result is " << vec[0] << std::endl;
 
   single_reader_hazard<<<1,128>>>(vec.data());
 
