@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cstdio>
+#include <memory>
 
 template<size_t N>
   class shared_array
@@ -10,7 +11,7 @@ template<size_t N>
     __device__
     shared_array()
     {
-      initialize_tags();
+      construct_tags();
 
       __shared__ int array[N];
 
@@ -30,6 +31,10 @@ template<size_t N>
     ~shared_array()
     {
       destroy_elements();
+
+      barrier();
+
+      destroy_tags();
     }
 
     __device__
@@ -65,9 +70,17 @@ template<size_t N>
 
   private:
     __device__
-    void initialize_tags()
+    void construct_tags()
     {
+#if CUDA_ARCH < 200
       __shared__ int tags[N];
+#else
+      __shared__ int *tags;
+      if(threadIdx.x == 0)
+      {
+        tags = static_cast<int*>(malloc(sizeof(int *)));
+      }
+#endif
 
       __syncthreads();
       if(threadIdx.x == 0)
@@ -77,6 +90,19 @@ template<size_t N>
       __syncthreads();
 
       clear_tags_and_synchronize();
+    }
+
+    __device__
+    void destroy_tags()
+    {
+#if CUDA_ARCH < 200
+      // nothing to do
+#else
+      if(threadIdx.x == 0)
+      {
+        free(tags);
+      }
+#endif
     }
 
     __device__
