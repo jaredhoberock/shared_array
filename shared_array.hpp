@@ -54,8 +54,7 @@ template<size_t N>
     __device__
     void barrier()
     {
-      clear_tags();
-      __syncthreads();
+      clear_tags_and_synchronize();
     }
 
     __device__
@@ -77,7 +76,7 @@ template<size_t N>
       }
       __syncthreads();
 
-      clear_tags();
+      clear_tags_and_synchronize();
     }
 
     __device__
@@ -91,7 +90,7 @@ template<size_t N>
     }
 
     __device__
-    void clear_tags()
+    void clear_tags_and_synchronize()
     {
       const int tag_is_clear = blockDim.x + 1;
 
@@ -102,6 +101,8 @@ template<size_t N>
           m_tags[i] = tag_is_clear;
         }
       }
+
+      __syncthreads();
     }
 
     __device__
