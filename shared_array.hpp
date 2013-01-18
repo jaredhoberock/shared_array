@@ -46,6 +46,9 @@ template<size_t N>
       return m_array[i];
     }
 
+    // XXX we probably want to return a value instead of a reference here
+    //     otherwise a writer could bash the referent
+    //     we should gain exclusive access to the element, make a copy, and then relinquish the lock
     __device__
     const int &operator[](int i) const
     {
